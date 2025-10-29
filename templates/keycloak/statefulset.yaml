@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "keycloak.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "keycloak.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "keycloak.fullname" . }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "keycloak.name" . }}
+  template:
+    metadata:
+      labels:
+        {{- include "keycloak.labels" . | nindent 8 }}
+    spec:
+      containers:
+      - name: keycloak
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+          - name: http
+            containerPort: 8080
+          - name: https
+            containerPort: 8443
+        livenessProbe:
+          httpGet:
+            path: /realms/master
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - |
+                pg_isready -h {{ .Release.Name }}-postgres.{{ .Release.Namespace }}.svc.cluster.local -p 5432 -U {{ .Values.keycloak.databaseName }}
+                echo $?
+                echo "PostgreSQL is up tested usgin pg_isready!"
+          initialDelaySeconds: 100
+          periodSeconds: 5
+          failureThreshold: 6
+        env:
+          - name: KEYCLOAK_ADMIN
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "keycloak.fullname" . }}-admin
+                key: username
+          - name: KEYCLOAK_ADMIN_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "keycloak.fullname" . }}-admin
+                key: password
+          - name: KC_DB
+            value: {{ .Values.keycloak.database.vendor }}
+          - name: KC_DB_URL_HOST
+            value: {{ .Values.keycloak.database.hostname }}
+          - name: KC_DB_URL_DATABASE
+            value: {{ .Values.keycloak.database.database }}
+          - name: KC_DB_USERNAME
+            value: {{ .Values.keycloak.database.username }}
+          - name: KC_DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "keycloak.fullname" . }}-db
+                key: password
+        command:
+          - "/opt/keycloak/bin/kc.sh"
+          - "start"
+        readinessProbe:
+          httpGet:
+            path: /realms/master
+            port: 8080
+          initialDelaySeconds: 20
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /realms/master
+            port: 8080
+          initialDelaySeconds: 60
+          timeoutSeconds: 5
+        volumeMounts:
+          - name: keycloak-data
+            mountPath: /opt/keycloak/data
+  volumeClaimTemplates:
+    - metadata:
+        name: keycloak-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
+        storageClassName: {{ .Values.persistence.storageClass }}
