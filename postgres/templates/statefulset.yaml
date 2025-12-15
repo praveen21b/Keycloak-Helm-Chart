@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}
+  namespace: "{{ .Release.Namespace }}"
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  serviceName: "postgres"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      {{- if .Values.postgres.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .Values.postgres.imagePullSecrets | nindent 6 }}
+      {{- end }}
+      containers:
+      - name: postgres
+        image: {{ .Values.postgres.image.registry }}/{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}
+        imagePullPolicy: Always
+        envFrom:
+        - secretRef:
+            name: {{ .Release.Name }}
+        ports:
+        - containerPort: {{ .Values.postgres.service.port }}
+        volumeMounts:
+        - mountPath: /var/lib/postgresql/data
+          name: data
+      {{- with .Values.postgres.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{ toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteMany" ]
+      resources:
+        requests:
+          storage:  {{ .Values.postgres.volume.size }}
+      {{- if .Values.postgres.volume.storageClassName }}
+      storageClassName: {{ .Values.postgres.volume.storageClassName }}
+      {{- end }}
+      volumeMode: Filesystem
