@@ -1,15 +1,29 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "postgres.fullname" . }}
+  name: {{ template "postgres.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "postgres.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.postgres.service.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
 spec:
-  type: {{ .Values.service.type }}
+  type: {{ .Values.postgres.service.type }}
+  {{- if and (eq .Values.postgres.service.type "LoadBalancer") .Values.postgres.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.postgres.service.loadBalancerIP }}
+  {{- end }}
   ports:
-    - port: {{ .Values.service.port }}
-      targetPort: http
-      protocol: TCP
-      name: http
+  - port: {{ .Values.postgres.service.port }}
+    targetPort: postgresql
+    protocol: TCP
+    name: postgresql
+    {{- if and (eq .Values.postgres.service.type "NodePort") .Values.postgres.service.nodePort }}
+    nodePort: {{ .Values.postgres.service.nodePort }}
+    {{- end }}
   selector:
     {{- include "postgres.selectorLabels" . | nindent 4 }}
+  {{- if eq .Values.postgres.service.type "LoadBalancer" }}
+  externalTrafficPolicy: Cluster
+  {{- end }}

@@ -1,0 +1,125 @@
+# values.yaml - Everything under postgres key
+postgres:
+  # 1. Deployment Configuration
+  replicaCount: 1
+  nameOverride: ""
+  fullnameOverride: ""
+  
+  # 2. Image Configuration
+  image:
+    registry: docker.io/praveen21b
+    repository: postgres
+    tag: 16.10.0
+    pullPolicy: IfNotPresent
+  imagePullSecrets: []
+  
+  # 3. Service Configuration
+  service:
+    type: ClusterIP
+    port: 5432
+    nodePort: ""
+    annotations: {}
+    loadBalancerIP: ""
+  
+  # 4. Authentication & Credentials
+  credentials:
+    database: "postgres"
+    user: "postgres"
+    password: ""  # Required - will fail validation if empty
+    postgresUserPassword: ""  # Optional admin password
+    existingSecret: ""  # Optional: use existing secret instead
+  
+  # 5. Database Configuration
+  config:
+    max_connections: "100"
+    shared_buffers: "128MB"
+    max_wal_size: "1GB"
+    min_wal_size: "80MB"
+    log_statement: "none"
+    logging_collector: "on"
+    # Add any other postgresql.conf parameters here
+  
+  # 6. Storage/Persistence
+  persistence:
+    enabled: true
+    size: "8Gi"
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+    annotations: {}
+  
+  # 7. Resource Limits
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  
+  # 8. Pod Configuration
+  podLabels: {}
+  podAnnotations: {}
+  priorityClassName: ""
+  securityContext:
+    fsGroup: 999
+    runAsUser: 999
+    runAsGroup: 999
+  containerSecurityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: "RuntimeDefault"
+  
+  # 9. Scheduling & Placement
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  topologySpreadConstraints: []
+  
+  # 10. Health Checks
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 1
+    successThreshold: 1
+  
+  # 11. Extra Configuration
+  extraEnv: []
+  extraVolumes: []
+  extraVolumeMounts: []
+  extraInitContainers: []
+  
+  # 12. Monitoring & Logging
+  metrics:
+    enabled: false
+    serviceMonitor:
+      enabled: false
+  
+  # 13. Backup Configuration
+  backup:
+    enabled: false
+    schedule: "0 2 * * *"
+    retentionDays: 7
+    s3:
+      enabled: false
+      bucket: ""
+      endpoint: ""
+  
+  # 14. High Availability (Optional)
+  replication:
+    enabled: false
+    synchronousCommit: "off"
+    numSynchronousReplicas: 0

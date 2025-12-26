@@ -1,48 +1,178 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ .Release.Name }}
-  namespace: "{{ .Release.Namespace }}"
+  name: {{ template "postgres.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "postgres.labels" . | nindent 4 }}
 spec:
+  serviceName: {{ template "postgres.fullname" . }}
+  replicas: {{ .Values.postgres.replicaCount }}
   selector:
     matchLabels:
-      app: postgres
-  serviceName: "postgres"
-  replicas: 1
+      {{- include "postgres.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app: postgres
+        {{- include "postgres.selectorLabels" . | nindent 8 }}
+        {{- with .Values.postgres.podLabels }}
+        {{ toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        {{- with .Values.postgres.podAnnotations }}
+        {{ toYaml . | nindent 8 }}
+        {{- end }}
     spec:
-      {{- if .Values.postgres.imagePullSecrets }}
+      {{- with .Values.postgres.imagePullSecrets }}
       imagePullSecrets:
-        {{- toYaml .Values.postgres.imagePullSecrets | nindent 6 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.postgres.priorityClassName }}
+      priorityClassName: {{ .Values.postgres.priorityClassName }}
+      {{- end }}
+      {{- with .Values.postgres.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.postgres.backup.enabled }}
+      initContainers:
+      - name: restore-backup
+        image: "{{ .Values.postgres.image.registry }}/{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            # Add backup restoration logic here
+            echo "Backup restoration would happen here"
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
       {{- end }}
       containers:
-      - name: postgres
-        image: {{ .Values.postgres.image.registry }}/{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}
-        imagePullPolicy: Always
-        envFrom:
-        - secretRef:
-            name: {{ .Release.Name }}
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.postgres.image.registry }}/{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+        imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+        {{- with .Values.postgres.containerSecurityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        env:
+        {{- if .Values.postgres.credentials.existingSecret }}
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.postgres.credentials.existingSecret }}
+              key: POSTGRESQL_DATABASE
+              optional: true
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.postgres.credentials.existingSecret }}
+              key: POSTGRESQL_USER
+              optional: true
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.postgres.credentials.existingSecret }}
+              key: POSTGRESQL_PASSWORD
+        - name: POSTGRES_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.postgres.credentials.existingSecret }}
+              key: POSTGRESQL_ADMIN_PASSWORD
+              optional: true
+        {{- else }}
+        - name: POSTGRES_DB
+          value: {{ .Values.postgres.credentials.database | quote }}
+        - name: POSTGRES_USER
+          value: {{ .Values.postgres.credentials.user | quote }}
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "postgres.fullname" . }}
+              key: POSTGRESQL_PASSWORD
+        - name: POSTGRES_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "postgres.fullname" . }}
+              key: POSTGRESQL_ADMIN_PASSWORD
+              optional: true
+        {{- end }}
+        {{- with .Values.postgres.extraEnv }}
+        {{ toYaml . | nindent 8 }}
+        {{- end }}
         ports:
-        - containerPort: {{ .Values.postgres.service.port }}
+        - name: postgresql
+          containerPort: {{ .Values.postgres.service.port }}
+          protocol: TCP
+        {{- if .Values.postgres.livenessProbe.enabled }}
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - exec pg_isready -U {{ .Values.postgres.credentials.user }}
+          initialDelaySeconds: {{ .Values.postgres.livenessProbe.initialDelaySeconds }}
+          timeoutSeconds: {{ .Values.postgres.livenessProbe.timeoutSeconds }}
+          periodSeconds: {{ .Values.postgres.livenessProbe.periodSeconds }}
+          failureThreshold: {{ .Values.postgres.livenessProbe.failureThreshold }}
+          successThreshold: {{ .Values.postgres.livenessProbe.successThreshold }}
+        {{- end }}
+        {{- if .Values.postgres.readinessProbe.enabled }}
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - exec pg_isready -U {{ .Values.postgres.credentials.user }}
+          initialDelaySeconds: {{ .Values.postgres.readinessProbe.initialDelaySeconds }}
+          timeoutSeconds: {{ .Values.postgres.readinessProbe.timeoutSeconds }}
+          periodSeconds: {{ .Values.postgres.readinessProbe.periodSeconds }}
+          failureThreshold: {{ .Values.postgres.readinessProbe.failureThreshold }}
+          successThreshold: {{ .Values.postgres.readinessProbe.successThreshold }}
+        {{- end }}
         volumeMounts:
-        - mountPath: /var/lib/postgresql/data
-          name: data
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        {{- with .Values.postgres.extraVolumeMounts }}
+        {{ toYaml . | nindent 8 }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.postgres.resources | nindent 10 }}
+      {{- with .Values.postgres.extraVolumes }}
+      volumes:
+        {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with .Values.postgres.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.postgres.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.postgres.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.postgres.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{ toYaml . | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
+  {{- if .Values.postgres.persistence.enabled }}
   volumeClaimTemplates:
   - metadata:
       name: data
+      {{- with .Values.postgres.persistence.annotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
-      accessModes: [ "ReadWriteMany" ]
+      accessModes:
+        {{- .Values.postgres.persistence.accessModes | toYaml | nindent 8 }}
       resources:
         requests:
-          storage:  {{ .Values.postgres.volume.size }}
-      {{- if .Values.postgres.volume.storageClassName }}
-      storageClassName: {{ .Values.postgres.volume.storageClassName }}
+          storage: {{ .Values.postgres.persistence.size | quote }}
+      {{- if .Values.postgres.persistence.storageClass }}
+      storageClassName: {{ .Values.postgres.persistence.storageClass | quote }}
       {{- end }}
-      volumeMode: Filesystem
+  {{- end }}
